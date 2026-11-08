@@ -1,0 +1,1143 @@
+<!DOCTYPE html>
+<html lang="bn">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PDF to Autofill Converter</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.min.js"></script>
+    <style>
+        * { box-sizing: border-box; }
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; margin: 20px; background-color: #f0f2f5; color: #333; }
+        .container { max-width: 680px; background: #fff; padding: 24px; border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.08); margin: 0 auto; }
+        h2 { color: #1a73e8; text-align: center; margin: 0 0 6px; font-size: 26px; }
+        .subtitle { text-align: center; color: #666; font-size: 13px; margin: 0 0 18px; }
+        .input-group { margin: 0 0 14px; }
+        input[type="file"] { display: block; width: 100%; padding: 12px; background: #f8f9fa; border-radius: 6px; border: 2px dashed #1a73e8; cursor: pointer; font-size: 13px; }
+        button { background-color: #1a73e8; color: white; border: none; padding: 12px 20px; font-size: 15px; border-radius: 6px; cursor: pointer; width: 100%; font-weight: bold; transition: background 0.3s; }
+        button:hover { background-color: #1557b0; }
+        button:disabled { background-color: #6c757d; cursor: not-allowed; }
+        #status { margin-top: 12px; font-weight: bold; text-align: center; color: #d9534f; font-size: 13px; }
+        .success { color: #28a745 !important; }
+        .preview-box { margin-top: 18px; background: #fff; border: 1px solid #e0e0e0; border-radius: 8px; display: none; overflow: hidden; }
+        .preview-header { background: #1a73e8; color: white; padding: 8px 14px; font-size: 13px; font-weight: 700; display: flex; justify-content: space-between; align-items: center; }
+        .preview-header span { font-size: 11px; opacity: 0.85; }
+        .preview-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 1px; background: #e0e0e0; }
+        .preview-item { padding: 3px 6px; display: flex; justify-content: space-between; align-items: center; font-size: 10px; font-weight: 600; background: #f8f9fa; gap: 3px; }
+        .preview-item.has-data { background-color: #e8f5e9; color: #1b5e20; }
+        .preview-item.no-data  { background-color: #fce8e6; color: #b71c1c; }
+        .preview-item .lbl { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; }
+        .badge { font-size: 9px; padding: 1px 4px; border-radius: 3px; font-weight: bold; flex-shrink: 0; }
+        .badge-yes { background: #2e7d32; color: white; }
+        .badge-no  { background: #c62828; color: white; }
+        .data-wrap { display: grid; grid-template-columns: 1fr 1fr; gap: 0 1px; background: #e8e8e8; font-size: 10.5px; }
+        .preview-section { grid-column: 1 / -1; background: #dce8ff; color: #1a73e8; font-size: 9.5px; font-weight: 700; padding: 2px 6px; text-transform: uppercase; letter-spacing: 0.4px; }
+        .data-table { width: 100%; border-collapse: collapse; }
+        .data-table td { padding: 3px 7px; border-top: 1px solid #ececec; }
+        .data-table td:first-child { font-weight: 600; color: #555; width: 44%; white-space: nowrap; }
+        .data-table td:last-child { color: #1a1a1a; word-break: break-all; }
+        .data-table tr:nth-child(even) td { background: #fafafa; }
+        .sec-title td { background: #e8eeff !important; font-size: 9.5px; font-weight: 700; color: #1a73e8; text-transform: uppercase; letter-spacing: 0.5px; padding: 2px 7px !important; }
+    </style>
+</head>
+<body>
+<div class="container">
+    <h2>PDF &#8594; Autofill Converter</h2>
+    <p class="subtitle">Powered by : Esonic Computer & Cyber Cafe</p><br>
+    <div class="input-group">
+        <input type="file" id="pdfFile" accept="application/pdf">
+    </div>
+    <button id="processBtn" disabled>&#x1F504; Convert &amp; Download Configuration</button>
+
+    <div id="status"></div>
+    <div class="preview-box" id="previewBox">
+        <div class="preview-header">
+            ডাটা চেকলিস্ট (Data Status)
+            <span id="previewSummary"></span>
+        </div>
+        <div class="preview-grid" id="previewContent"></div>
+        <div class="data-wrap">
+            <table class="data-table" id="dataTable"></table>
+            <table class="data-table" id="dataTable2"></table>
+        </div>
+    </div>
+</div>
+<script>
+pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.worker.min.js';
+
+const fileInput      = document.getElementById('pdfFile');
+const processBtn     = document.getElementById('processBtn');
+const statusDiv      = document.getElementById('status');
+const previewBox     = document.getElementById('previewBox');
+const previewContent = document.getElementById('previewContent');
+const dataTable      = document.getElementById('dataTable');
+const dataTable2     = document.getElementById('dataTable2');
+const previewSummary = document.getElementById('previewSummary');
+
+let rawLines = [];
+let pdfFileName = "";
+
+fileInput.addEventListener('change', function() {
+    if (this.files.length > 0) {
+        pdfFileName = this.files[0].name.replace(/\.pdf$/i, '').trim();
+        processBtn.disabled = false;
+        statusDiv.classList.remove('success');
+        statusDiv.textContent = "ফাইল লোড হয়েছে , Convert বাটনে ক্লিক করুন।";
+        previewBox.style.display = "none";
+    }
+});
+
+processBtn.addEventListener('click', async () => {
+    const file = fileInput.files[0];
+    if (!file) return;
+    statusDiv.classList.remove('success');
+    statusDiv.textContent = "পিডিএফ প্রসেস করা হচ্ছে...";
+    processBtn.disabled = true;
+    try {
+        const arrayBuffer = await file.arrayBuffer();
+        const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+        rawLines = [];
+        for (let i = 1; i <= pdf.numPages; i++) {
+            const page    = await pdf.getPage(i);
+            const content = await page.getTextContent();
+            let items = content.items;
+            items.sort((a, b) => {
+                const dy = b.transform[5] - a.transform[5];
+                if (Math.abs(dy) < 5) return a.transform[4] - b.transform[4];
+                return dy;
+            });
+            items.forEach(item => {
+                const text = item.str.replace(/["\r\n]/g, '').trim();
+                if (text && text !== ",") rawLines.push(text);
+            });
+        }
+        generateAutofillFile();
+    } catch (err) {
+        console.error(err);
+        statusDiv.textContent = "পিডিএফ পার্স করতে সমস্যা: " + err.message;
+        processBtn.disabled = false;
+    }
+});
+
+function getValueByKeyword(keyword) {
+    const kc = keyword.toLowerCase().replace(/\s+/g, '');
+    for (let i = 0; i < rawLines.length; i++) {
+        if (rawLines[i].toLowerCase().replace(/\s+/g, '').includes(kc)) {
+            let idx = i + 1;
+            if (rawLines[idx] === ':' || rawLines[idx] === '::') idx++;
+            if (rawLines[idx]) return rawLines[idx].trim();
+        }
+    }
+    return "";
+}
+
+function getEmail() {
+    for (let i = 0; i < rawLines.length; i++) {
+        const norm = rawLines[i].toLowerCase().replace(/\s+/g, '');
+        if (!norm.includes('email')) continue;
+        if (/email\s*[:：]\s*.+/i.test(rawLines[i])) continue;
+
+        let idx = i + 1;
+        if (idx < rawLines.length && (rawLines[idx] === ':' || rawLines[idx] === '::')) idx++;
+        if (idx >= rawLines.length) return "";
+
+        const val = rawLines[idx].trim();
+        if (/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(val)) return val;
+        return "";
+    }
+    return "";
+}
+
+function isAddrLabel(tok) {
+    if (!tok) return false;
+    const n = tok.toLowerCase().replace(/[\s\/:\*\(\)]+/g, '');
+    return /^(careof|village|vill|roadhouse|flat|house|postoffice|postcode|district|thana|upazila|union|subdistrict|present|permanent|address)/.test(n);
+}
+
+function extractCompound(tok) {
+    const m = tok.match(/^(?:care\s*of|village[^:]*|post\s*office|post\s*code|upazila[^:]*|district[^:]*)\s*[:：]\s*(.+)$/i);
+    return m ? m[1].trim() : null;
+}
+
+function getAddressOccurrence(keyword, occurrence) {
+    const kc = keyword.toLowerCase().replace(/[\s/]/g, '');
+    let count = 0;
+    for (let i = 0; i < rawLines.length; i++) {
+        const lc1 = rawLines[i].toLowerCase().replace(/[\s/]/g, '');
+        const lc2 = lc1 + (rawLines[i+1] ? rawLines[i+1].toLowerCase().replace(/[\s/]/g, '') : '');
+        let matchLen = 0;
+        if (lc1.includes(kc)) { matchLen = 1; }
+        else if (lc2.includes(kc)) { matchLen = 2; }
+        if (matchLen === 0) continue;
+
+        count++;
+        if (count !== occurrence) continue;
+
+        let idx = i + matchLen;
+        while (idx < rawLines.length && /^[\s]*\//.test(rawLines[idx])) idx++;
+        while (idx < rawLines.length && /^[:\s*]+$/.test(rawLines[idx])) idx++;
+
+        while (idx < rawLines.length && isAddrLabel(rawLines[idx])) {
+            const compound = extractCompound(rawLines[idx]);
+            if (compound) return compound;
+            idx++;
+        }
+
+        if (!rawLines[idx]) return "";
+        let val = rawLines[idx].trim();
+        val = val.replace(/^(?:care\s*of|post\s*office|post\s*code|upazila|district)\s*[:：]\s*/i, '');
+        val = val.replace(/^[:\s]+/, '');
+        return val || "";
+    }
+    return "";
+}
+
+function getMaritalStatus() {
+    const kc = 'maritalstatus';
+    for (let i = 0; i < rawLines.length; i++) {
+        if (rawLines[i].toLowerCase().replace(/\s+/g, '').includes(kc)) {
+            let idx = i + 1;
+            if (rawLines[idx] === ':' || rawLines[idx] === '::') idx++;
+            if (rawLines[idx]) {
+                const val = rawLines[idx].trim();
+                if (/married/i.test(val))         return "Married";
+                if (/single|unmarried/i.test(val)) return "Single";
+                return val;
+            }
+        }
+    }
+    return "Single";
+}
+
+function getGender() {
+    for (let i = 0; i < rawLines.length; i++) {
+        const inline = rawLines[i].match(/gender\s*[:：]\s*(.+)/i);
+        if (inline) {
+            const v = inline[1].trim();
+            if (/female|মহিলা|নারী/i.test(v)) return "Female";
+            if (/male|পুরুষ/i.test(v))         return "Male";
+            if (/other|অন্য/i.test(v))         return "Other";
+            if (v) return v;
+        }
+        if (rawLines[i].toLowerCase().replace(/\s+/g, '').includes('gender')) {
+            let idx = i + 1;
+            if (rawLines[idx] === ':' || rawLines[idx] === '::') idx++;
+            if (rawLines[idx]) {
+                const val = rawLines[idx].trim();
+                if (/female|মহিলা|নারী/i.test(val)) return "Female";
+                if (/male|পুরুষ/i.test(val))         return "Male";
+                if (/other|অন্য/i.test(val))         return "Other";
+                if (val) return val;
+            }
+        }
+    }
+    for (const line of rawLines) {
+        if (/^\s*female\s*$/i.test(line)) return "Female";
+        if (/^\s*male\s*$/i.test(line))   return "Male";
+        if (/^\s*other\s*$/i.test(line))  return "Other";
+    }
+    return "";
+}
+
+function getSpouseName() {
+    const keywords = ['spousename', "spouse'sname", 'husbandname', "husband'sname", 'wifename', "wife'sname"];
+    const badVal = v => !v || /^01[0-9]{9}$/.test(v) || /mobile|marital|n\/a|none|email/i.test(v);
+    for (let i = 0; i < rawLines.length; i++) {
+        const lc = rawLines[i].toLowerCase().replace(/[\s']/g, '');
+        if (!keywords.some(k => lc.includes(k))) continue;
+
+        const cleanVal = v => v.replace(/[\)\(\:\*]+$/, '').trim();
+        const inlineMatch = rawLines[i].match(/[:：]\s*(.+)$/);
+        if (inlineMatch) {
+            const v = cleanVal(inlineMatch[1].trim());
+            if (!badVal(v)) return v;
+        }
+
+        for (let offset = 1; offset <= 3; offset++) {
+            const line = rawLines[i + offset];
+            if (!line) break;
+            if (line === ':' || line === '::') continue;
+            if (/mobile|email|marital|date|quota/i.test(line.toLowerCase().replace(/\s/g, ''))) break;
+            const v = cleanVal(line.trim());
+            if (!badVal(v)) return v;
+        }
+    }
+    return "";
+}
+
+/* ══════════ NID এবং Birth Registration সমাধান ══════════ */
+function getIdentification() {
+    let nidNo = "";
+    let bregNo = "";
+
+    /* কৌশল ১: 'Birth Reg/NID' বা 'Birth Registration/National ID' যৌথ লেবেল খোঁজা */
+    for (let i = 0; i < rawLines.length; i++) {
+        const line = rawLines[i].toLowerCase().replace(/\s+/g, '');
+        if (line.includes('birth') && (line.includes('nid') || line.includes('nationalid'))) {
+            /* মান খোঁজা (পরবর্তী ১-৩ লাইনের মধ্যে) */
+            let valLine = "";
+            for (let j = i + 1; j <= i + 3 && j < rawLines.length; j++) {
+                if (rawLines[j] === ':' || rawLines[j] === '::') continue;
+                valLine = rawLines[j].trim();
+                break;
+            }
+
+            if (valLine) {
+                /* স্ল্যাশ দিয়ে আলাদা করা: যেমন 'No / 4669514095' অথবা '4669514095 / No' */
+                let parts = [];
+                if (valLine.includes('/')) {
+                    parts = valLine.split('/').map(p => p.trim());
+                } else if (valLine.includes('\\')) {
+                    parts = valLine.split('\\').map(p => p.trim());
+                }
+
+                if (parts.length >= 2) {
+                    const leftPart = parts[0];
+                    const rightPart = parts[1];
+
+                    /* বাম পাশ = Birth Reg, ডান পাশ = NID */
+                    if (/^[0-9]{10,17}$/.test(leftPart)) {
+                        bregNo = leftPart;
+                    }
+                    if (/^[0-9]{10,17}$/.test(rightPart)) {
+                        nidNo = rightPart;
+                    }
+                    return { nidNo, bregNo };
+                }
+            }
+        }
+    }
+
+    /* কৌশল ২: আলাদা আলাদা ফিল্ড থাকলে (সাধারণ ফর্ম্যাট) */
+    if (!nidNo) {
+        nidNo = getValueByKeyword("National ID") || getValueByKeyword("NID No");
+        if (!nidNo || !/^[0-9]{10,17}$/.test(nidNo)) {
+            for (const line of rawLines) {
+                let m = line.match(/Bangladeshi\/([0-9]{10,17})/i);
+                if (!m) m = line.match(/NID[^0-9]*([0-9]{10,17})/i);
+                if (!m) m = line.match(/\/\s*([0-9]{10,17})$/);
+                if (m) { nidNo = m[1]; break; }
+            }
+        }
+    }
+
+    if (!bregNo) {
+        bregNo = getValueByKeyword("Birth Registration") || getValueByKeyword("Birth Reg No") || getValueByKeyword("Birth Reg");
+        if (!/^[0-9]{10,17}$/.test(bregNo)) {
+            bregNo = "";
+        }
+    }
+
+    /* অতিরিক্ত সেফটি: পুরো ফাইলে ১০-১৭ ডিজিটের নম্বর আলাদা করা */
+    if (!nidNo && !bregNo) {
+        for (let i = 0; i < rawLines.length; i++) {
+            if (/nid|national\s*id/i.test(rawLines[i])) {
+                for (let j = i; j <= i + 3 && j < rawLines.length; j++) {
+                    const m = rawLines[j].match(/\b([0-9]{10,17})\b/);
+                    if (m) { nidNo = m[1]; break; }
+                }
+                if (nidNo) break;
+            } else if (/birth\s*reg/i.test(rawLines[i])) {
+                for (let j = i; j <= i + 3 && j < rawLines.length; j++) {
+                    const m = rawLines[j].match(/\b([0-9]{10,17})\b/);
+                    if (m) { bregNo = m[1]; break; }
+                }
+                if (bregNo) break;
+            }
+        }
+    }
+
+    return { nidNo, bregNo };
+}
+
+function getEducationRow(examKeyword, sectStart, sectEnd) {
+    const kc = examKeyword.toUpperCase().replace(/[\.\s]/g, '');
+    const lim = sectEnd !== undefined ? Math.min(sectEnd, rawLines.length) : rawLines.length;
+    const from = sectStart !== undefined ? sectStart : 0;
+    const shortKw = kc.length <= 4;
+    const kwSuffixRe = new RegExp('^' + kc + '(VOCATIONAL|EQUIVALENT|\\(BM\\)|BM)$');
+
+    for (let i = from; i < lim; i++) {
+        const lc1 = rawLines[i].toUpperCase().replace(/[\.\s]/g, '');
+        const lc2 = (rawLines[i] + (rawLines[i + 1] || '')).toUpperCase().replace(/[\.\s]/g, '');
+        let matchSpan = 0;
+        if (shortKw) {
+            if (lc1 === kc || lc1.startsWith(kc + '/') || lc1.endsWith('/' + kc) || lc1 === kc + 'S' || kwSuffixRe.test(lc1)) {
+                matchSpan = 1;
+            } else if (lc2.startsWith(kc + '/') || lc2.includes('/' + kc + '/') || lc2.endsWith('/' + kc)) {
+                matchSpan = 2;
+            }
+        } else {
+            if (lc1.includes(kc)) { matchSpan = 1; }
+            else if (lc2.includes(kc)) { matchSpan = 2; }
+        }
+        if (!matchSpan) continue;
+
+        const afterMatch = rawLines[i + matchSpan] || '';
+        const afterNorm  = afterMatch.toUpperCase().replace(/[\.\s]/g, '');
+        if (/examination|if applicable|board.*institute|group.*subject/i.test(afterMatch)) continue;
+        if (/^(HSC|SSC|DAKHIL|ALIM|OLEVEL|HONOURS?|HONORS?|GRADUATION|MASTERS?|DEGREE|PASSCOURSE|FAZIL|DIPLOMA|BSCENGINEERING)$/.test(afterNorm)) continue;
+
+        const tokens = [];
+        for (let j = i; j < Math.min(i + 26, lim); j++) tokens.push(rawLines[j].trim());
+
+        const token1IsBoard = matchSpan === 2 && !!getBoardCode(tokens[1]);
+        let examName;
+        if (matchSpan === 2 && !token1IsBoard) {
+            const lc1next = (rawLines[i + 1] || '').toUpperCase().replace(/[\.\s]/g, '');
+            examName = lc1next.includes(kc) ? tokens[1] : (tokens[0] + ' ' + tokens[1]).trim();
+        } else {
+            examName = tokens[0];
+        }
+
+        let yearIdx = -1, year = '';
+        for (let j = 1; j < tokens.length; j++) {
+            if (/^(199[0-9]|200[0-9]|201[0-9]|202[0-9]|203[0-5])$/.test(tokens[j])) {
+                year = tokens[j]; yearIdx = j; break;
+            }
+        }
+        if (yearIdx < 0) continue;
+
+        const bStart = matchSpan === 2 ? 2 : 1;
+        let board = '';
+        let rollStart = bStart + 1;
+
+        if (token1IsBoard) {
+            board     = tokens[1];
+            rollStart = bStart;
+        } else {
+            board = tokens[bStart] || '';
+            if (tokens[bStart] === 'National' && tokens[bStart + 1] === 'University')
+                board = 'National University';
+            if (/^(199[0-9]|200[0-9]|201[0-9]|202[0-9]|203[0-5])$/.test(board)) board = '';
+        }
+
+        let roll = '';
+        for (let j = rollStart; j < yearIdx; j++) {
+            if (/^[0-9]{5,9}$/.test(tokens[j])) { roll = tokens[j]; break; }
+        }
+        if (!roll) {
+            for (let j = yearIdx + 1; j < Math.min(yearIdx + 4, tokens.length); j++) {
+                if (/^[0-9]{5,9}$/.test(tokens[j])) { roll = tokens[j]; break; }
+            }
+        }
+
+        let result = '';
+        for (let j = 1; j < yearIdx; j++) {
+            const m = tokens[j].match(/\b([0-9]+\.[0-9]+)\b/);
+            if (m) { result = m[1]; break; }
+        }
+
+        let duration = '03';
+        for (let di = yearIdx + 1; di <= yearIdx + 3 && di < tokens.length; di++) {
+            if (/^[0-9]{1,2}$/.test(tokens[di])) { duration = tokens[di].padStart(2, '0'); break; }
+        }
+
+        const SUBJ_BLACKLIST = /^(gpa|cgpa|n\/a|out|of|and|the|n|na|honours?|honors?|pass|course|hsc|ssc|dakhil|alim|vocational|diploma|equivalent|masters?|mss|national|university|board|dhaka|rajshahi|comilla|jessore|chittagong|sylhet|barisal|dinajpur|mymensingh|technical|madrasah|dibs|open|edexcel|cambridge|bteb|b\.sc|bsc|b\.ss|bss|m\.sc|msc|m\.a|m\.s|mba|llm)$/i;
+        const isSubjToken = t =>
+            t.length >= 3 &&
+            /^[A-Za-z][A-Za-z\s\-\/\.\(\)&]+$/.test(t) &&
+            !SUBJ_BLACKLIST.test(t.trim());
+
+        let subject = '';
+        for (let j = yearIdx - 1; j >= bStart + 1; j--) {
+            if (isSubjToken(tokens[j])) { subject = tokens[j]; break; }
+        }
+        if (!subject) {
+            for (let j = yearIdx + 2; j < Math.min(yearIdx + 8, tokens.length); j++) {
+                if (isSubjToken(tokens[j])) { subject = tokens[j]; break; }
+            }
+        }
+        if (!subject) {
+            for (let j = bStart + 1; j < yearIdx; j++) {
+                if (tokens[j].length >= 3 && /^[A-Za-z]/.test(tokens[j]) && !SUBJ_BLACKLIST.test(tokens[j])) {
+                    subject = tokens[j]; break;
+                }
+            }
+        }
+
+        return { examName, board, roll, result, subject, year, duration };
+    }
+    return null;
+}
+
+const SUBJ_MAP = {
+    "accounting":101,"accounting and information systems":268,
+    "anthropology":102,"applied chemistry":103,"applied physics":104,"applied mathematics":105,
+    "arabic":106,"archaeology":107,"bangla":108,"banking":109,
+    "banking and insurance":267,"bio-technology":227,"biochemistry":110,"botany":111,
+    "business administration":112,"business studies":250,
+    "chemical engineering":302,"chemistry":113,"civil engineering":303,
+    "clinical psychology":115,"communication disorders":183,
+    "computer engineering":184,"computer science":114,
+    "computer science & engineering":185,"computer science & information technology":186,
+    "criminology":182,"criminology & police science":179,
+    "development studies":117,"drama & music":116,
+    "economics":118,"education":119,
+    "electrical & electronics engineering":306,"electrical engineering":305,
+    "electronic engineering":307,"electronics & communication engineering":397,
+    "electronics & telecommunication engineering":400,
+    "english":120,"environmental engineering":327,"environmental science":189,
+    "environmental science and disaster management":414,
+    "finance":121,"finance and banking":192,"fine arts":122,"fisheries":231,
+    "folklore":123,"food and process engineering":330,"food technology":406,
+    "food technology and nutrition science":413,
+    "forestry":177,"genetic engineering":308,"genetic engineering and biotechnology":190,
+    "geography":124,"geography and environmental science":125,
+    "geology":188,"government and politics":195,
+    "hadith":128,"history":126,"home economics":127,
+    "human resource management":271,
+    "information and communication technology":132,"information technology":187,
+    "information science and library management":135,
+    "international business":269,"international law":168,"international relations":129,
+    "islamic history":130,"islamic studies":131,"islamic history and culture":130,
+    "language":136,"law":134,"jurisprudence":134,
+    "management":137,"management information systems":266,
+    "marine engineering":311,"marine science":141,"marketing":138,
+    "mass comm":133,"journalism":133,"mass communication":133,
+    "mathematics":139,"mechanical engineering":312,"microbiology":140,
+    "naval architecture":316,"nuclear engineering":411,
+    "nutrition":410,"oceanography":409,
+    "pali":143,"persian":144,"pharmacy":145,"philosophy":146,
+    "physics":147,"plant pathology":245,"political science":148,
+    "population science":152,"psychology":149,
+    "public administration":150,"public finance":151,
+    "rural sociology":248,
+    "sanskrit":155,"social welfare":156,"social work":156,"sociology":157,
+    "software engineering":329,"statistics":159,
+    "tafsir":160,"telecommunication engineering":323,
+    "television":180,"film":180,"photography":180,
+    "textile engineering":320,"town planning":321,
+    "urdu":161,"urban development":162,"urban & regional planning":322,
+    "water & environment science":165,"water resource engineering":398,
+    "women studies":164,"women and gender studies":181,
+    "world religion":163,"zoology":166,
+    "architecture":301,"leather engineering":310,
+    "petroleum":412,"mining engineering":315,
+    "poultry science":247,"horticulture":241,
+    "tourism":270,"hospitality":270,
+    "public health":113
+};
+function getSubjectCode(name, isPass) {
+    if (isPass) return "992";
+    if (!name) return "";
+    const lower = name.toLowerCase().trim();
+    const keys = Object.keys(SUBJ_MAP).sort((a,b) => b.length - a.length);
+    for (const k of keys) {
+        if (lower.includes(k)) return String(SUBJ_MAP[k]);
+    }
+    return "";
+}
+
+const BOARD_MAP = {
+    "dibs":10,
+    "barisal":11,"barishal":11,
+    "chattogram":12,"chittagong":12,
+    "cumilla":13,"comilla":13,
+    "dhaka":14,
+    "dinajpur":15,
+    "jashore":16,"jessore":16,
+    "madrasah":17,"madrasha":17,"madrasa":17,
+    "mymensingh":18,
+    "rajshahi":19,
+    "sylhet":20,
+    "open university":21,
+    "edexcel":22,
+    "cambridge":23,
+    "pharmacy council":24,
+    "state medical faculty":25,"state medical":25,
+    "bteb":26,"bangladesh technical education board":26,"technical education board":26
+};
+function getBoardCode(boardName) {
+    if (!boardName) return "";
+    const lower = boardName.toLowerCase();
+    for (const [k, v] of Object.entries(BOARD_MAP)) {
+        if (lower.includes(k)) return String(v);
+    }
+    return "";
+}
+
+const GRA_EXAM_MAP = {
+    "b.sc engineering":1,"bsc engineering":1,"b.sc. engineering":1,
+    "b.sc in agricultural":2,"agricultural science":2,"b.sc agri":2,
+    "m.b.b.s":3,"mbbs":3,"b.d.s":3,"bds":3,
+    "honors":4,"honours":4,
+    "pass course":5,"pass":5,
+    "fazil":6,
+    "b.b.a":7,"bba":7,
+    "graduation equivalent":8
+};
+function getGraExamCode(examName) {
+    if (!examName) return "";
+    const lower = examName.toLowerCase();
+    for (const [k, v] of Object.entries(GRA_EXAM_MAP)) {
+        if (lower.includes(k)) return String(v);
+    }
+    return "";
+}
+
+const MAS_EXAM_MAP = {
+    "m.a":1,"ma ":1,
+    "m.s.s":2,"mss":2,"m.ss":2,
+    "m.sc":3,"msc":3,
+    "m.com":4,"mcom":4,
+    "m.b.a":5,"mba":5,
+    "l.l.m":6,"llm":6,
+    "kamil":8,
+    "masters equivalent":10,"equivalent":10
+};
+function getMasExamCode(examName) {
+    if (!examName) return "";
+    const lower = examName.toLowerCase();
+    const sorted = Object.keys(MAS_EXAM_MAP).sort((a,b) => b.length - a.length);
+    for (const k of sorted) {
+        if (lower.includes(k)) return String(MAS_EXAM_MAP[k]);
+    }
+    return "";
+}
+
+const UNI_MAP = {
+    "national university":240,
+    "dhaka university":168,"university of dhaka":168,
+    "rajshahi university":273,"university of rajshahi":273,
+    "chittagong university":324,"university of chittagong":324,
+    "jahangirnagar":211,
+    "jagannath":210,
+    "khulna university":222,
+    "barisal university":135,"university of barisal":322,
+    "sylhet agricultural":306,
+    "sylhet engineering":307,
+    "khulna engineering":223,"kuet":223,
+    "rajshahi engineering":274,"ruet":274,
+    "chittagong engineering":152,"cuet":152,
+    "dhaka engineering":169,"duet":169,
+    "islamic university":209,"islamic university, kushtia":209,
+    "begum rokeya":137,
+    "noakhali":243,
+    "shahjalal":290,
+    "sher-e-bangla agricultural":295,"sher e bangla agri":295,
+    "bangladesh agricultural":119,
+    "buet":153,"bangladesh university of engineering":153,
+    "north south":251,
+    "brac university":138,
+    "daffodil":162,
+    "east west":177,
+    "independent university":196,
+    "american international":105,
+    "southeast university":300,
+    "stamford":304,
+    "united international":320,
+    "world university":339
+};
+function getInstituteCode(boardOrUni) {
+    if (!boardOrUni) return "";
+    const lower = boardOrUni.toLowerCase();
+    const sorted = Object.keys(UNI_MAP).sort((a,b) => b.length - a.length);
+    for (const k of sorted) {
+        if (lower.includes(k)) return String(UNI_MAP[k]);
+    }
+    return "";
+}
+
+const DIST_MAP = {
+    "bagerhat":26,"bandarban":64,"barguna":32,"barishal":29,"barisal":29,
+    "bhola":30,"bogura":10,"bogra":10,"brahmanbaria":54,"chandpur":56,
+    "chapai nawabganj":13,"chapainawabganj":13,
+    "chattogram":60,"chittagong":60,"chuadanga":19,
+    "cox":61,"cumilla":55,"comilla":55,"dhaka":40,
+    "dinajpur":3,"faridpur":45,"feni":59,"gaibandha":8,
+    "gazipur":41,"gopalganj":47,"habiganj":53,"jamalpur":36,
+    "jashore":23,"jessore":23,"jhalakathi":28,"jhenaidah":20,
+    "joypurhat":9,"khagrachhari":62,"khulna":25,"kishoreganj":38,
+    "kurigram":7,"kushtia":17,"lakshmipur":57,"lalmonirhat":5,
+    "madaripur":48,"magura":21,"manikganj":39,"meherpur":18,
+    "moulvibazar":52,"munshiganj":44,"mymensingh":34,"naogaon":11,
+    "narail":22,"narayanganj":43,"narsingdi":42,"natore":12,
+    "netrokona":33,"nilphamari":4,"noakhali":58,"pabna":16,
+    "panchagarh":1,"patuakhali":31,"pirojpur":27,"rajbari":46,
+    "rajshahi":14,"rangamati":63,"rangpur":6,"satkhira":24,
+    "shariatpur":49,"sherpur":35,"sirajganj":15,"sunamganj":50,
+    "sylhet":51,"tangail":37,"thakurgaon":2
+};
+function getDistrictCode(distName) {
+    if (!distName) return "";
+    const lower = distName.toLowerCase();
+    for (const [k, v] of Object.entries(DIST_MAP)) {
+        if (lower.includes(k)) return String(v);
+    }
+    return "";
+}
+
+const SSC_GROUP_MAP = {
+    "science":1,
+    "humanities":2,"arts":2,
+    "business studies":3,"commerce":3,
+    "general":4,
+    "agro-based food":11,"architectural drafting":12,"automotive":13,
+    "building maintenance":14,"ceramic":15,"civil construction":16,
+    "civil drafting":17,"computer and information":18,
+    "dress making":19,"dyeing":20,"electrical maintenance works":21,
+    "farm machinery":22,"fish culture":23,"food processing":24,
+    "fruit and vegetable":25,"general electrical":26,
+    "general electronics":27,"general mechanics":28,"glass":29,
+    "knitting":33,"livestock rearing":30,"machine tools operation":31,
+    "mechanical drafting":32,"patient care":34,
+    "plumbing":35,"poultry rearing":36,"refrigeration and air conditioning":37,
+    "shrimp culture":38,"welding and fabrication":39,"wood working":40,
+    "other":99
+};
+function getSscGroupCode(grp) {
+    if (!grp) return "";
+    const l = grp.toLowerCase();
+    const sorted = Object.keys(SSC_GROUP_MAP).sort((a,b) => b.length - a.length);
+    for (const k of sorted) { if (l.includes(k)) return String(SSC_GROUP_MAP[k]); }
+    return "";
+}
+
+const HSC_GROUP_MAP = {
+    "science":1,
+    "humanities":2,"arts":2,
+    "business studies":3,"commerce":3,
+    "general":4,
+    "agriculture technology":12,"agro machinery":71,
+    "architecture and interior":13,"automobile technology":15,"automobile":72,
+    "building construction":73,"ceramic technology":48,"chemical technology":21,
+    "civil technology":16,"clothing and garments finishing":74,
+    "computer operation and maintenance":75,
+    "computer science & engineering technology":20,
+    "computer science technology":17,
+    "data telecommunication":23,"dental":93,
+    "drafting civil":76,"electrical and electronics technology":24,
+    "electrical technology":22,"electrical works":77,
+    "electro-medical":57,"electronic control":78,"electronics technology":42,
+    "environmental technology":27,"firm machinery":46,
+    "fish culture":79,"food technology":54,"food":85,
+    "garments design":53,"general mechanics":45,"glass technology":50,
+    "graphic design":49,"industrial wood working":84,
+    "information and communication technology":18,
+    "instrumentation":31,"jute technology":52,"laboratory":92,
+    "library science":43,"machine tools operation and maintenance":80,
+    "marine technology":55,"mechanical technology":32,"mechatronics technology":34,
+    "mechatronics":86,"mining":56,"pharmacy":96,"physiotherapy":94,
+    "poultry rearing":81,"power technology":36,"printing technology":37,
+    "radiography":91,"radiotherapy":95,
+    "refrigeration & air conditioning technology":38,
+    "refrigeration and air-conditioning":82,
+    "shipbuilding":47,"survey":44,"telecommunication technology":41,
+    "textile engineering":51,"welding and fabrication":83,
+    "other":99
+};
+function getHscGroupCode(grp) {
+    if (!grp) return "";
+    const l = grp.toLowerCase();
+    const sorted = Object.keys(HSC_GROUP_MAP).sort((a,b) => b.length - a.length);
+    for (const k of sorted) { if (l.includes(k)) return String(HSC_GROUP_MAP[k]); }
+    return "";
+}
+
+const SSC_EXAM_MAP = {
+    "dakhil vocational":6,
+    "ssc vocational":3,"s.s.c vocational":3,
+    "ssc equivalent":5,"s.s.c equivalent":5,"equivalent":5,
+    "dakhil":2,
+    "o level":4,"o-level":4,"cambridge":4,
+    "ssc":1,"s.s.c":1,"secondary school certificate":1
+};
+function getSscExamCode(n) {
+    if (!n) return "";
+    const l = n.toLowerCase().replace(/\./g, "");
+    const sorted = Object.keys(SSC_EXAM_MAP).sort((a,b) => b.length - a.length);
+    const norm = k => k.replace(/\./g, "");
+    for (const k of sorted) { if (l.includes(norm(k))) return String(SSC_EXAM_MAP[k]); }
+    return "";
+}
+
+const HSC_EXAM_MAP = {
+    "hsc (bm)":9,"hsc(bm)":9,"h.s.c (bm)":9,
+    "hsc vocational":8,"h.s.c vocational":8,
+    "hsc equivalent":6,"h.s.c equivalent":6,"equivalent":6,
+    "diploma in medical technology":7,
+    "diploma-in-engineering":4,"diploma in engineering":4,
+    "diploma in pharmacy":10,
+    "business management":3,
+    "a level":5,"a-level":5,"sr. cambridge":5,"sr cambridge":5,
+    "alim":2,
+    "hsc":1,"h.s.c":1,"higher secondary certificate":1
+};
+function getHscExamCode(n) {
+    if (!n) return "";
+    const l = n.toLowerCase().replace(/\./g, "");
+    const sorted = Object.keys(HSC_EXAM_MAP).sort((a,b) => b.length - a.length);
+    const norm = k => k.replace(/\./g, "");
+    for (const k of sorted) { if (l.includes(norm(k))) return String(HSC_EXAM_MAP[k]); }
+    return "";
+}
+
+function pi(label, has) {
+    const c = has ? 'has-data' : 'no-data';
+    const b = has ? '<span class="badge badge-yes">&#10004;</span>' : '<span class="badge badge-no">&#10008;</span>';
+    return `<div class="preview-item ${c}"><span class="lbl" title="${label}">${label}</span>${b}</div>`;
+}
+function ph(title) { return `<div class="preview-section">${title}</div>`; }
+function ts(title) { return `<tr class="sec-title"><td colspan="2">${title}</td></tr>`; }
+function tr(label, val) {
+    const d = val || '<span style="color:#bbb">&#8212;</span>';
+    return `<tr><td>${label}</td><td>${d}</td></tr>`;
+}
+
+function generateAutofillFile() {
+    let eduStart = -1, eduEnd = rawLines.length;
+    for (let i = 0; i < rawLines.length; i++) {
+        const u = rawLines[i].replace(/[\s\.]/g, '').toUpperCase();
+        if (u.includes('ACADEMICQUALIFICATION') || u.includes('EDUCATIONALINFO') || u.includes('EDUCATIONINFO')) {
+            eduStart = i; break;
+        }
+    }
+    if (eduStart >= 0) {
+        for (let i = eduStart + 1; i < rawLines.length; i++) {
+            if (/enclosure|skills.*extra|extra.*curricular|i declare|other quali|congratul|©\d|your user/i.test(rawLines[i])) {
+                eduEnd = i; break;
+            }
+        }
+    }
+    const E = eduStart >= 0 ? eduStart : 0;
+
+    const nameEn   = getValueByKeyword("Applicant's Name") || getValueByKeyword("Applicant Name");
+    const nameBn   = getValueByKeyword("আবেদনকারীর নাম")  || getValueByKeyword("আেবদনকারীর নাম");
+    const fatherEn = getValueByKeyword("Father's Name")    || getValueByKeyword("Father Name");
+    const fatherBn = getValueByKeyword("পিতার নাম")        || getValueByKeyword("পতার নাম");
+    const motherEn = getValueByKeyword("Mother's Name")    || getValueByKeyword("Mother Name");
+    const motherBn = getValueByKeyword("মাতার নাম");
+    const email    = getEmail();
+
+    /* NID এবং Birth Registration সঠিক মূল্যায়ন */
+    const { nidNo, bregNo } = getIdentification();
+    const hasNid  = !!nidNo;
+    const hasBreg = !!bregNo;
+
+    let mobileNo = "";
+    for (const line of rawLines) {
+        if (/^01[0-9]{9}$/.test(line)) { mobileNo = line; break; }
+    }
+
+    const MON_SHORT = {jan:'01',feb:'02',mar:'03',apr:'04',may:'05',jun:'06',
+                       jul:'07',aug:'08',sep:'09',oct:'10',nov:'11',dec:'12'};
+    const MON_FULL  = {january:'01',february:'02',march:'03',april:'04',may:'05',june:'06',
+                       july:'07',august:'08',september:'09',october:'10',november:'11',december:'12'};
+    let dobRaw = "";
+
+    const tryParseDob = (line) => {
+        let m = line.match(/\b(\d{1,2})\/(\d{1,2})\/(\d{4})\b/);
+        if (m) {
+            const d = parseInt(m[1],10), mo = parseInt(m[2],10);
+            if (d>=1 && d<=31 && mo>=1 && mo<=12)
+                return `${m[3]}-${String(mo).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+        }
+        m = line.match(/\b(\d{1,2})-([A-Za-z]{3})-(\d{4})\b/);
+        if (m) return `${m[3]}-${MON_SHORT[m[2].toLowerCase()]||'01'}-${m[1].padStart(2,'0')}`;
+        m = line.match(/\b(\d{1,2})\s+(January|February|March|April|May|June|July|August|September|October|November|December)\s+(\d{4})\b/i);
+        if (m) return `${m[3]}-${MON_FULL[m[2].toLowerCase()]||'01'}-${m[1].padStart(2,'0')}`;
+        m = line.match(/\b(\d{1,2})\s+([A-Za-z]{3})\.?\s+(\d{4})\b/);
+        if (m && MON_SHORT[m[2].toLowerCase()]) return `${m[3]}-${MON_SHORT[m[2].toLowerCase()]}-${m[1].padStart(2,'0')}`;
+        m = line.match(/\b(\d{4}-\d{2}-\d{2})\b/);
+        if (m) return m[1];
+        return "";
+    };
+
+    for (let i = 0; i < rawLines.length && !dobRaw; i++) {
+        if (/date\s*of\s*birth|জন্ম\s*তারিখ|জন্ম-?তারিখ|D\.O\.B/i.test(rawLines[i])) {
+            for (let j = i; j <= i + 4 && j < rawLines.length; j++) {
+                const v = tryParseDob(rawLines[j]);
+                if (v) { dobRaw = v; break; }
+            }
+            if (!dobRaw) {
+                for (let j = i; j + 2 <= i + 6 && j + 2 < rawLines.length; j++) {
+                    const combo = (rawLines[j]||'').trim()+' '+(rawLines[j+1]||'').trim()+' '+(rawLines[j+2]||'').trim();
+                    const v = tryParseDob(combo);
+                    if (v) { dobRaw = v; break; }
+                }
+            }
+        }
+    }
+    if (!dobRaw) {
+        for (const line of rawLines) {
+            const m = line.match(/\b(\d{1,2})\/(\d{1,2})\/(\d{4})\b/);
+            if (m) {
+                const d = parseInt(m[1],10), mo = parseInt(m[2],10);
+                if (d>=1 && d<=31 && mo>=1 && mo<=12) {
+                    dobRaw = `${m[3]}-${String(mo).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+                    break;
+                }
+            }
+        }
+    }
+    if (!dobRaw) {
+        for (const line of rawLines) {
+            const v = tryParseDob(line);
+            if (v) { dobRaw = v; break; }
+        }
+    }
+
+    const maritalStatus = getMaritalStatus();
+    const genderVal     = getGender();
+    const spouseName    = getSpouseName();
+
+    const pCare    = getAddressOccurrence("Care Of", 1)   || fatherEn;
+    const pVill    = getAddressOccurrence("Vill", 1)      || getAddressOccurrence("Village", 1);
+    const pPost    = getAddressOccurrence("Post Office", 1);
+    const pCode    = getAddressOccurrence("Post Code", 1);
+    const pUpazila    = getAddressOccurrence("Upazila", 1) || getAddressOccurrence("Thana", 1) || getAddressOccurrence("P.S", 1);
+    const permCare    = getAddressOccurrence("Care Of", 2)   || fatherEn;
+    const permVill    = getAddressOccurrence("Vill", 2)      || getAddressOccurrence("Village", 2);
+    const permPost    = getAddressOccurrence("Post Office", 2);
+    const permCode    = getAddressOccurrence("Post Code", 2);
+    const permUpazila = getAddressOccurrence("Upazila", 2) || getAddressOccurrence("Thana", 2) || getAddressOccurrence("P.S", 2);
+    const isSame   = (pVill && permVill && pVill.toLowerCase() === permVill.toLowerCase()) ? "1" : "0";
+    const pDistCode    = getDistrictCode(getAddressOccurrence("District", 1)) || "";
+    const permDistCode = getDistrictCode(getAddressOccurrence("District", 2)) || "";
+
+    const ssc =
+        getEducationRow("SSC",              E, eduEnd) ||
+        getEducationRow("S.S.C",            E, eduEnd) ||
+        getEducationRow("Dakhil",           E, eduEnd) ||
+        getEducationRow("O Level",          E, eduEnd) ||
+        getEducationRow("O-Level",          E, eduEnd) ||
+        getEducationRow("O-level",          E, eduEnd);
+    const hsc =
+        getEducationRow("HSC",              E, eduEnd) ||
+        getEducationRow("H.S.C",            E, eduEnd) ||
+        getEducationRow("Alim",             E, eduEnd) ||
+        getEducationRow("A Level",          E, eduEnd) ||
+        getEducationRow("A-Level",          E, eduEnd) ||
+        getEducationRow("A-level",          E, eduEnd) ||
+        getEducationRow("Diploma",          E, eduEnd) ||
+        getEducationRow("Business Management", E, eduEnd);
+    const honors =
+        getEducationRow("Honors",      E, eduEnd) ||
+        getEducationRow("Honours",     E, eduEnd) ||
+        getEducationRow("Pass Course", E, eduEnd) ||
+        getEducationRow("Pass",        E, eduEnd) ||
+        getEducationRow("Fazil",       E, eduEnd) ||
+        getEducationRow("BBA",         E, eduEnd) ||
+        getEducationRow("B.B.A",       E, eduEnd) ||
+        getEducationRow("B.Sc",        E, eduEnd);
+    const mss =
+        getEducationRow("Masters",     E, eduEnd) ||
+        getEducationRow("M.S.S",       E, eduEnd) ||
+        getEducationRow("MSS",         E, eduEnd) ||
+        getEducationRow("M.Sc",        E, eduEnd) ||
+        getEducationRow("M.Com",       E, eduEnd) ||
+        getEducationRow("M.B.A",       E, eduEnd) ||
+        getEducationRow("M.A",         E, eduEnd) ||
+        getEducationRow("Kamil",       E, eduEnd);
+
+    const isPass       = honors && /pass/i.test(honors.examName);
+    const graExam      = getGraExamCode(honors ? honors.examName : "");
+    const graSubj      = getSubjectCode(honors ? honors.subject : "", isPass);
+    const masSubj      = getSubjectCode(mss ? mss.subject : "", false);
+    const masExam      = getMasExamCode(mss ? mss.examName : "");
+    const graInst      = getInstituteCode(honors ? honors.board : "");
+    const masInst      = getInstituteCode(mss ? mss.board : "");
+    const sscBoardCode = ssc ? getBoardCode(ssc.board) : "";
+    const hscBoardCode = hsc ? getBoardCode(hsc.board) : "";
+    const sscGroupCode = ssc ? getSscGroupCode(ssc.subject) : "";
+    const hscGroupCode = hsc ? getHscGroupCode(hsc.subject) : "";
+    const sscExamCode  = ssc ? getSscExamCode(ssc.examName) : "";
+    const hscExamCode  = hsc ? getHscExamCode(hsc.examName) : "";
+    const graDur = (() => {
+        if (!honors) return "04";
+        const d = parseInt(honors.duration, 10);
+        if (d === 3) return "03"; if (d === 5) return "05"; return "04";
+    })();
+    const masDur = (() => {
+        if (!mss) return "01";
+        const d = parseInt(mss.duration, 10);
+        if (d === 2) return "02"; if (d >= 3) return "03"; return "01";
+    })();
+
+    let yc = 0, tc = 0;
+    function chk(label, val) { tc++; if (val) yc++; return pi(label, !!val); }
+    let html = "";
+    html += ph("");
+    html += chk("Name EN",   nameEn);
+    html += chk("Father EN", fatherEn);
+    html += chk("Mother EN", motherEn);
+    html += chk("DOB",       dobRaw);
+    html += chk("NID No",    nidNo);
+    html += chk("Birth Reg", bregNo);
+    html += chk("Gender",    genderVal);
+    html += chk("Marital",   maritalStatus);
+    html += chk("Spouse",    spouseName);
+    html += chk("Mobile",    mobileNo);
+    html += chk("Email",     email);
+    html += ph("");
+    html += chk("Care Of",    pCare);
+    html += chk("Village",    pVill);
+    html += chk("Post Office",pPost);
+    html += chk("Post Code",  pCode);
+    html += chk("Upazila",    pUpazila);
+    html += chk("Same Addr?", isSame === "1" ? "Yes" : (permVill ? "No" : ""));
+    html += ph("");
+    html += chk("SSC",        ssc);
+    html += chk("HSC",        hsc);
+    html += chk("Graduation", honors);
+    html += chk("Grad Subj",  honors && honors.subject);
+    html += chk("Masters",    mss);
+    html += chk("Mas. Subj",  mss && mss.subject);
+    previewContent.innerHTML = html;
+    previewSummary.textContent = yc + "/" + tc + " পাওয়া গেছে";
+
+    let tbl1 = "", tbl2 = "";
+    tbl1 += ts("ব্যক্তিগত তথ্য");
+    tbl1 += tr("Name (EN)",    nameEn);
+    tbl1 += tr("Father (EN)",  fatherEn);
+    tbl1 += tr("Mother (EN)",  motherEn);
+    tbl1 += tr("DOB",          dobRaw);
+    tbl1 += tr("NID No",       nidNo);
+    tbl1 += tr("Birth Reg No", bregNo);
+    tbl1 += tr("Gender",       genderVal);
+    tbl1 += tr("Marital",      maritalStatus);
+    tbl1 += tr("Spouse",       spouseName);
+    tbl1 += tr("Mobile",       mobileNo);
+    tbl1 += tr("Email",        email);
+    tbl2 += ts("ঠিকানা");
+    tbl2 += tr("Pres. Care",   pCare);
+    tbl2 += tr("Pres. Vill",   pVill);
+    tbl2 += tr("Pres. Upazila",pUpazila);
+    tbl2 += tr("Pres. Post",   pPost);
+    tbl2 += tr("Pres. Code",   pCode);
+    tbl2 += tr("Same Addr?",   isSame === "1" ? "হ্যাঁ" : "না");
+    if (isSame === "0") {
+        tbl2 += tr("Perm. Care", permCare);
+        tbl2 += tr("Perm. Vill", permVill);
+        tbl2 += tr("Perm. Upazila", permUpazila);
+        tbl2 += tr("Perm. Post", permPost);
+        tbl2 += tr("Perm. Code", permCode);
+    }
+    tbl2 += ts("শিক্ষা");
+    if (ssc)    tbl2 += tr("SSC",  "Exam:" + ssc.examName + "(→" + sscExamCode + ") Brd:" + ssc.board + "(→" + sscBoardCode + ") Grp:" + (ssc.subject||"?") + "(→" + sscGroupCode + ") Roll:" + ssc.roll + " Yr:" + ssc.year);
+    if (hsc)    tbl2 += tr("HSC",  "Exam:" + hsc.examName + "(→" + hscExamCode + ") Brd:" + hsc.board + "(→" + hscBoardCode + ") Grp:" + (hsc.subject||"?") + "(→" + hscGroupCode + ") Roll:" + hsc.roll + " Yr:" + hsc.year);
+    if (honors) tbl2 += tr("Gra.", honors.examName + "(→" + graExam + ") " + (honors.subject||"?") + "(→" + graSubj + ") " + honors.result + " " + honors.year);
+    if (mss)    tbl2 += tr("Mas.", mss.examName + "(→" + masExam + ") " + (mss.subject||"?") + "(→" + masSubj + ") " + mss.result + " " + mss.year);
+    dataTable.innerHTML  = tbl1;
+    dataTable2.innerHTML = tbl2;
+    previewBox.style.display = "block";
+
+    /* ── ৯. আউটপুট টেক্সট ফাইল তৈরি (NID & Birth Reg শর্তানুযায়ী) ── */
+    const T = "\t";
+    let out = "autofillForms@blueimp.net" + T + "1.0.4" + T + mobileNo + " NN" + T + "(?:)\n\n";
+    out += "Applicant's Name(English)*"       + T + nameEn    + T + "(?:^name$)"          + T + "(?:)" + T + "true" + T + "true\n";
+    out += "\u0986\u09AC\u09C7\u09A6\u09A8\u0995\u09BE\u09B0\u09C0\u09B0 \u09A8\u09BE\u09AE (\u09AC\u09BE\u0982\u09B2\u09BE\u09AF\u09BC)*" + T + nameBn + T + "(?:^name_bn$)" + T + "(?:)" + T + "true" + T + "true\n";
+    out += "Father's Name(English)*"          + T + fatherEn  + T + "(?:^father$)"        + T + "(?:)" + T + "true" + T + "true\n";
+    out += "\u09AA\u09BF\u09A4\u09BE\u09B0 \u09A8\u09BE\u09AE (\u09AC\u09BE\u0982\u09B2\u09BE\u09AF\u09BC)*" + T + fatherBn + T + "(?:^father_bn$)" + T + "(?:)" + T + "true" + T + "true\n";
+    out += "Mother's Name(English)*"          + T + motherEn  + T + "(?:^mother$)"        + T + "(?:)" + T + "true" + T + "true\n";
+    out += "\u09AE\u09BE\u09A4\u09BE\u09B0 \u09A8\u09BE\u09AE (\u09AC\u09BE\u0982\u09B2\u09BE\u09AF\u09BC)*" + T + motherBn + T + "(?:^mother_bn$)" + T + "(?:)" + T + "true" + T + "true\n";
+    out += "Date of Birth*"                   + T + dobRaw    + T + "(?:^dob$)"           + T + "(?:)" + T + "true" + T + "true\n";
+    out += "Nationality*"      + T + "(?:^Bangladeshi$)" + T + "(?:^nationality$)"        + T + "(?:)" + T + "true" + T + "true\n";
+    out += "Religion*"         + T + "(?:^1$)"           + T + "(?:^religion$)"           + T + "(?:)" + T + "true" + T + "true\n";
+    out += "Gender*"           + T + "(?:^" + genderVal + "$)" + T + "(?:^gender$)"        + T + "(?:)" + T + "true" + T + "true\n";
+
+    /* NID রেডিও বাটন ও ফিল্ড */
+    out += "National ID *"     + T + (hasNid ? "(?:^1$)" : "(?:^0$)") + T + "(?:^nid$)"   + T + "(?:)" + T + "true" + T + "true\n";
+    out += "Nid_no"            + T + nidNo               + T + "(?:^nid_no$)"             + T + "(?:)" + T + "true" + T + "true\n";
+
+    /* Birth Registration রেডিও বাটন ও ফিল্ড */
+    out += "Birth Registration*" + T + (hasBreg ? "(?:^1$)" : "(?:^0$)") + T + "(?:^breg$)" + T + "(?:)" + T + "true" + T + "true\n";
+    out += "Breg_no"           + T + bregNo              + T + "(?:^breg_no$)"            + T + "(?:)" + T + "true" + T + "true\n";
+
+    out += "Passport ID*"      + T + "(?:^0$)"           + T + "(?:^passport$)"           + T + "(?:)" + T + "true" + T + "true\n";
+    out += "Passport_no"       + T                       + T + "(?:^passport_no$)"        + T + "(?:)" + T + "true" + T + "true\n";
+    out += "Marital Status*"   + T + "(?:^" + maritalStatus + "$)" + T + "(?:^marital_status$)" + T + "(?:)" + T + "true" + T + "true\n";
+    out += "Spouse_name"       + T + spouseName          + T + "(?:^spouse_name$)"        + T + "(?:)" + T + "true" + T + "true\n";
+    out += "Mobile Number*"    + T + mobileNo            + T + "(?:^mobile$)"             + T + "(?:)" + T + "true" + T + "true\n";
+    out += "Confirm Mobile Number*" + T + mobileNo       + T + "(?:^confirm_mobile$)"     + T + "(?:)" + T + "true" + T + "true\n";
+    out += "Email*"            + T + email               + T + "(?:^email$)"              + T + "(?:)" + T + "true" + T + "true\n";
+    out += "Quota*"            + T + "(?:^8$)"           + T + "(?:^quota$)"              + T + "(?:)" + T + "true" + T + "true\n";
+    out += "Quota_details"     + T                       + T + "(?:^quota_details$)"      + T + "(?:)" + T + "true" + T + "true\n";
+    out += "Departmental Status*" + T + "(?:^5$)"        + T + "(?:^dep_status$)"         + T + "(?:)" + T + "true" + T + "true\n";
+    out += "Care Of*"          + T + pCare    + T + "(?:^present_careof$)"     + T + "(?:)" + T + "true" + T + "true\n";
+    out += "Village/ Road/ House/ Flat*" + T + pVill + T + "(?:^present_village$)" + T + "(?:)" + T + "true" + T + "true\n";
+    if (pDistCode) out += "District*" + T + "(?:^" + pDistCode + "$)" + T + "(?:^present_district$)" + T + "(?:)" + T + "true" + T + "true\n";
+    if (pUpazila)  out += "Upazila/P.S*" + T + pUpazila + T + "(?:^present_upazila$)" + T + "(?:)" + T + "true" + T + "true\n";
+    out += "Post Office*"      + T + pPost    + T + "(?:^present_post$)"       + T + "(?:)" + T + "true" + T + "true\n";
+    out += "Post Code*"        + T + pCode    + T + "(?:^present_postcode$)"   + T + "(?:)" + T + "true" + T + "true\n";
+    out += "Same as Present Address" + T + "(?:^" + isSame + "$)" + T + "(?:^same_as_present$)" + T + "(?:)" + T + "true" + T + "true\n";
+    if (isSame === "0") {
+        out += "Care Of*"      + T + permCare  + T + "(?:^permanent_careof$)"   + T + "(?:)" + T + "true" + T + "true\n";
+        out += "Village/ Road/ House/ Flat*" + T + permVill + T + "(?:^permanent_village$)" + T + "(?:)" + T + "true" + T + "true\n";
+        if (permDistCode) out += "District*" + T + "(?:^" + permDistCode + "$)" + T + "(?:^permanent_district$)" + T + "(?:)" + T + "true" + T + "true\n";
+        if (permUpazila)  out += "Upazila/P.S*" + T + permUpazila + T + "(?:^permanent_upazila$)" + T + "(?:)" + T + "true" + T + "true\n";
+        out += "Post Office*"  + T + permPost  + T + "(?:^permanent_post$)"     + T + "(?:)" + T + "true" + T + "true\n";
+        out += "Post Code*"    + T + permCode  + T + "(?:^permanent_postcode$)" + T + "(?:)" + T + "true" + T + "true\n";
+    }
+    if (ssc) {
+        if (sscExamCode)  out += "Examination*"    + T + "(?:^" + sscExamCode  + "$)" + T + "(?:^ssc_exam$)"       + T + "(?:)" + T + "true" + T + "true\n";
+        out += "Roll No*"        + T + ssc.roll                      + T + "(?:^ssc_roll$)"        + T + "(?:)" + T + "true" + T + "true\n";
+        if (sscGroupCode) out += "Group/Subject*"  + T + "(?:^" + sscGroupCode + "$)" + T + "(?:^ssc_group$)"       + T + "(?:)" + T + "true" + T + "true\n";
+        out += "Ssc_group_other" + T                                 + T + "(?:^ssc_group_other$)" + T + "(?:)" + T + "true" + T + "true\n";
+        if (sscBoardCode) out += "Board*"          + T + "(?:^" + sscBoardCode + "$)" + T + "(?:^ssc_board$)"       + T + "(?:)" + T + "true" + T + "true\n";
+        out += "Ssc_board_other" + T                                 + T + "(?:^ssc_board_other$)" + T + "(?:)" + T + "true" + T + "true\n";
+        out += "Result*"         + T + "(?:^5$)"                     + T + "(?:^ssc_result_type$)" + T + "(?:)" + T + "true" + T + "true\n";
+        out += "Ssc_result"      + T + ssc.result                    + T + "(?:^ssc_result$)"      + T + "(?:)" + T + "true" + T + "true\n";
+        out += "Passing Year*"   + T + "(?:^" + ssc.year + "$)"      + T + "(?:^ssc_year$)"        + T + "(?:)" + T + "true" + T + "true\n";
+    }
+    if (hsc) {
+        out += "If Applicable"   + T + "(?:^1$)"                     + T + "(?:^if_applicable_hsc$)" + T + "(?:)" + T + "true" + T + "true\n";
+        if (hscExamCode)  out += "Examination*"    + T + "(?:^" + hscExamCode  + "$)" + T + "(?:^hsc_exam$)"          + T + "(?:)" + T + "true" + T + "true\n";
+        out += "Roll No*"        + T + hsc.roll                      + T + "(?:^hsc_roll$)"           + T + "(?:)" + T + "true" + T + "true\n";
+        if (hscGroupCode) out += "Group/Subject*"  + T + "(?:^" + hscGroupCode + "$)" + T + "(?:^hsc_group$)"          + T + "(?:)" + T + "true" + T + "true\n";
+        out += "Hsc_group_other" + T                                 + T + "(?:^hsc_group_other$)"    + T + "(?:)" + T + "true" + T + "true\n";
+        if (hscBoardCode) out += "Board*"          + T + "(?:^" + hscBoardCode + "$)" + T + "(?:^hsc_board$)"          + T + "(?:)" + T + "true" + T + "true\n";
+        out += "Hsc_board_other" + T                                 + T + "(?:^hsc_board_other$)"    + T + "(?:)" + T + "true" + T + "true\n";
+        out += "Result*"         + T + "(?:^5$)"                     + T + "(?:^hsc_result_type$)"    + T + "(?:)" + T + "true" + T + "true\n";
+        out += "Hsc_result"      + T + hsc.result                    + T + "(?:^hsc_result$)"         + T + "(?:)" + T + "true" + T + "true\n";
+        out += "Passing Year*"   + T + "(?:^" + hsc.year + "$)"      + T + "(?:^hsc_year$)"           + T + "(?:)" + T + "true" + T + "true\n";
+    }
+    if (honors) {
+        out += "If Applicable"       + T + "(?:^1$)"                   + T + "(?:^if_applicable_gra$)"   + T + "(?:)" + T + "true" + T + "true\n";
+        out += "Examination*"        + T + "(?:^" + graExam + "$)"     + T + "(?:^gra_exam$)"            + T + "(?:)" + T + "true" + T + "true\n";
+        out += "University/Inst.*"   + T + "(?:^" + graInst + "$)"     + T + "(?:^gra_institute$)"       + T + "(?:)" + T + "true" + T + "true\n";
+        out += "Gra_institute_other" + T                               + T + "(?:^gra_institute_other$)"  + T + "(?:)" + T + "true" + T + "true\n";
+        out += "Passing Year*"       + T + "(?:^" + honors.year + "$)" + T + "(?:^gra_year$)"            + T + "(?:)" + T + "true" + T + "true\n";
+        out += "Subject/Degree*"     + T + "(?:^" + graSubj + "$)"     + T + "(?:^gra_subject$)"         + T + "(?:)" + T + "true" + T + "true\n";
+        out += "Gra_subject_other"   + T + (graSubj==="999"?honors.subject:"") + T + "(?:^gra_subject_other$)" + T + "(?:)" + T + "true" + T + "true\n";
+        out += "Result*"             + T + "(?:^4$)"                   + T + "(?:^gra_result_type$)"     + T + "(?:)" + T + "true" + T + "true\n";
+        out += "Gra_result"          + T + honors.result               + T + "(?:^gra_result$)"          + T + "(?:)" + T + "true" + T + "true\n";
+        out += "Course Duration*"    + T + "(?:^" + graDur + "$)"      + T + "(?:^gra_duration$)"        + T + "(?:)" + T + "true" + T + "true\n";
+    } else {
+        out += "If Applicable"       + T                               + T + "(?:^if_applicable_gra$)"   + T + "(?:)" + T + "false" + T + "false\n";
+    }
+    if (mss) {
+        out += "If Applicable"       + T + "(?:^1$)"                  + T + "(?:^if_applicable_mas$)"   + T + "(?:)" + T + "true" + T + "true\n";
+        out += "Examination*"        + T + "(?:^" + masExam + "$)"    + T + "(?:^mas_exam$)"            + T + "(?:)" + T + "true" + T + "true\n";
+        out += "University/Inst.*"   + T + "(?:^" + masInst + "$)"    + T + "(?:^mas_institute$)"       + T + "(?:)" + T + "true" + T + "true\n";
+        out += "Mas_institute_other" + T                               + T + "(?:^mas_institute_other$)" + T + "(?:)" + T + "true" + T + "true\n";
+        out += "Passing Year*"       + T + "(?:^" + mss.year + "$)"   + T + "(?:^mas_year$)"            + T + "(?:)" + T + "true" + T + "true\n";
+        out += "Subject/Degree*"     + T + "(?:^" + masSubj + "$)"    + T + "(?:^mas_subject$)"         + T + "(?:)" + T + "true" + T + "true\n";
+        out += "Mas_subject_other"   + T + (masSubj==="999"?mss.subject:"") + T + "(?:^mas_subject_other$)" + T + "(?:)" + T + "true" + T + "true\n";
+        out += "Result*"             + T + "(?:^4$)"                  + T + "(?:^mas_result_type$)"     + T + "(?:)" + T + "true" + T + "true\n";
+        out += "Mas_result"          + T + mss.result                 + T + "(?:^mas_result$)"          + T + "(?:)" + T + "true" + T + "true\n";
+        out += "Course Duration*"    + T + "(?:^" + masDur + "$)"     + T + "(?:^mas_duration$)"        + T + "(?:)" + T + "true" + T + "true\n";
+    } else {
+        out += "If Applicable"       + T                               + T + "(?:^if_applicable_mas$)"   + T + "(?:)" + T + "false" + T + "false\n";
+    }
+    out += "If Applicable" + T + "(?:^1$)" + T + "(?:^if_applicable_exp$)" + T + "(?:)" + T + "false" + T + "true\n";
+    out += "I declare that the information provided above are correct, true and complete to the best of my knowledge and belief. And I would like to go to the next step." + T + "(?:^on$)" + T + "(?:^agree$)" + T + "(?:)" + T + "false" + T + "true\n";
+
+    const baseName = mobileNo ? mobileNo : pdfFileName;
+    const fname    = (baseName ? baseName + " NN" : "autofill_config") + ".txt";
+    const blob     = new Blob([out], { type: 'text/plain;charset=utf-8' });
+    const url      = URL.createObjectURL(blob);
+
+    const a = document.createElement('a');
+    a.href = url; a.download = fname;
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+
+    statusDiv.classList.add('success');
+    statusDiv.innerHTML = '✔ প্রসেস সম্পন্ন ! ডাউনলোড না হলে এখানে ক্লিক করুনঃ '
+        + '<a href="' + url + '" download="' + fname + '" style="color:#1a73e8;font-weight:bold;">'
+        + '📥 ' + fname + '</a>';
+    processBtn.disabled = false;
+}
+</script>
+</body>
+</html>
